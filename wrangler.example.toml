@@ -1,0 +1,22 @@
+# Copy to private/wrangler.toml (or ./wrangler.toml) and fill in. The real file
+# is instance config and is never committed to this repo.
+#
+#   npx wrangler d1 create fitbuddy-sync        # prints the database_id
+#   npx wrangler pages project create fitbuddy
+#   npx wrangler pages secret put SYNC_TOKEN --project-name fitbuddy
+#   npx wrangler pages secret put EXPORT_TOKEN --project-name fitbuddy   # optional, for exports
+name = "fitbuddy"
+compatibility_date = "2026-08-18"
+pages_build_output_dir = "dist"
+
+# Sync database. One row per record, keyed by (kind, id) — see functions/api/sync.ts.
+[[d1_databases]]
+binding = "DB"
+database_name = "fitbuddy-sync"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[vars]
+# Your deployed origin(s), comma-separated. localhost:5173 is always allowed.
+ALLOWED_ORIGINS = "https://your-project.pages.dev"
+# Time zone for times in the markdown export.
+LOG_TIME_ZONE = "UTC"

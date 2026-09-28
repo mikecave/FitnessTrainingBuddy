@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dev-dist/
+*.local
+.DS_Store
+.mcp.json
+.agentsroom/
+
+# Instance config and data live in the private repo checked out here.
+private/
+wrangler.toml
+data-backup/
+.wrangler/

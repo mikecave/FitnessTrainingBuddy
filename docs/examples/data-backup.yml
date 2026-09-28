@@ -1,0 +1,59 @@
+# TEMPLATE — copy to .github/workflows/ in your PRIVATE instance repo (never in
+# the public code repo: it commits your personal data). Needs an Actions secret
+# FITBUDDY_EXPORT_TOKEN equal to the Pages secret EXPORT_TOKEN.
+#
+# Nightly restorable backup of the cloud database, committed as
+# data-backup/fitbuddy-data.json (the app's Backup → Import format).
+# See functions/api/export.ts.
+name: Data backup
+
+on:
+  schedule:
+    - cron: '30 21 * * *' # nightly
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: data-backup
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch backup
+        env:
+          FITBUDDY_EXPORT_TOKEN: ${{ secrets.FITBUDDY_EXPORT_TOKEN }}
+        run: |
+          curl -sf -H "Authorization: Bearer $FITBUDDY_EXPORT_TOKEN" \
+            "https://YOUR-PROJECT.pages.dev/api/export?format=backup" > /tmp/backup.json
+          # Never overwrite a good backup with an empty or broken one.
+          node -e '
+            const b = JSON.parse(require("fs").readFileSync("/tmp/backup.json", "utf8"));
+            const d = b.data || {};
+            const counts = Object.entries(d).map(([k, v]) => `${k}: ${v.length}`).join(", ");
+            console.log(counts);
+            if (b.format !== "fitbuddy-backup" || !d.sessions?.length || !d.templates?.length) {
+              console.error("REFUSING: backup has no sessions or templates");
+              process.exit(1);
+            }
+            require("fs").writeFileSync("data-backup/fitbuddy-data.json", JSON.stringify(b, null, 2) + "\n");
+          '
+
+      - name: Commit and push if anything changed
+        run: |
+          git add data-backup/fitbuddy-data.json
+          if git diff --cached --quiet; then
+            echo "No data change."
+            exit 0
+          fi
+          git config user.name "FitBuddy"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Data snapshot $(date -u +%Y-%m-%d)" -m "Nightly backup of the Cloudflare D1 sync database, in app-import format (Backup → Import & merge restores it)."
+          for i in 1 2 3; do
+            git pull -q --rebase && git push -q && exit 0
+            sleep 5
+          done
+          exit 1
