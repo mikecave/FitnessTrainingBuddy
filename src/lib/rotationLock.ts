@@ -37,6 +37,16 @@ function savePreference(locked: boolean): void {
 }
 
 let status: LockStatus = 'unlocked';
+/** Why the last lock attempt failed, in the browser's own words — shown to
+ *  the user, since "it didn't work" can't be debugged from here. */
+let lastError = '';
+/** Whether we put the page into fullscreen to get the lock, so unlocking
+ *  only exits a fullscreen we started. */
+let enteredFullscreen = false;
+
+export function getLockError(): string {
+  return lastError;
+}
 const listeners = new Set<(s: LockStatus) => void>();
 
 export function getLockStatus(): LockStatus {
@@ -55,34 +65,66 @@ function setStatus(next: LockStatus): void {
 
 /** Apply the stored preference. Called at start-up and on every return to the
  *  foreground, because Android can drop a lock while the app is backgrounded. */
-export async function applyRotationLock(): Promise<LockStatus> {
+function tryLock(orientation: OrientationWithLock): Promise<void> {
+  // Some browsers neither grant nor refuse — the promise just never settles —
+  // so give up after a moment and treat that as a refusal.
+  return Promise.race([
+    orientation.lock!('portrait'),
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('no answer from the browser')), LOCK_TIMEOUT_MS),
+    ),
+  ]);
+}
+
+/** Apply the stored preference. Called at start-up and on every return to the
+ *  foreground, because Android can drop a lock while the app is backgrounded.
+ *
+ *  `fromTap`: the call comes from a button press, so fullscreen may be
+ *  requested. Chrome on Android refuses lock() outside fullscreen even in the
+ *  installed app on some setups (2026-10-01: the user hit exactly that), so a
+ *  refused lock falls back to fullscreen + lock. Fullscreen needs a user
+ *  gesture, which is why the automatic re-apply can't do it. */
+export async function applyRotationLock({ fromTap = false } = {}): Promise<LockStatus> {
   const orientation = (typeof screen !== 'undefined' ? screen.orientation : undefined) as
     | OrientationWithLock
     | undefined;
   if (!isLockPreferred()) {
     orientation?.unlock?.();
+    if (enteredFullscreen && document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+    enteredFullscreen = false;
     setStatus('unlocked');
     return status;
   }
   if (!orientation?.lock) {
+    lastError = 'this browser has no rotation lock';
     setStatus('unsupported');
     return status;
   }
   try {
-    // Some browsers neither grant nor refuse — the promise just never
-    // settles — so give up after a moment and call that unsupported.
-    await Promise.race([
-      orientation.lock('portrait'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), LOCK_TIMEOUT_MS)),
-    ]);
+    await tryLock(orientation);
+    lastError = '';
     setStatus('locked');
-  } catch {
-    setStatus('unsupported');
+    return status;
+  } catch (e) {
+    lastError = e instanceof Error ? e.message : String(e);
   }
+  if (fromTap && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+    try {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      enteredFullscreen = true;
+      await tryLock(orientation);
+      lastError = '';
+      setStatus('locked');
+      return status;
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  setStatus('unsupported');
   return status;
 }
 
 export function setRotationLock(locked: boolean): Promise<LockStatus> {
   savePreference(locked);
-  return applyRotationLock();
+  return applyRotationLock({ fromTap: true });
 }

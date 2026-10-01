@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  getLockError,
   getLockStatus,
   isLockPreferred,
   onLockStatus,
@@ -27,7 +28,7 @@ export function RotationLockButton() {
           // than quietly flipping the preference off.
           const next = await setRotationLock(status === 'unsupported' ? true : !wantsLock);
           setHint(next === 'unsupported');
-          if (next === 'unsupported') setTimeout(() => setHint(false), 4000);
+          if (next === 'unsupported') setTimeout(() => setHint(false), 8000);
         }}
         aria-label={locked ? 'Rotation locked — tap to allow rotation' : 'Rotation unlocked — tap to lock to portrait'}
         aria-pressed={locked}
@@ -39,7 +40,8 @@ export function RotationLockButton() {
       </button>
       {hint && (
         <span className="absolute right-0 top-full z-30 mt-1 w-56 rounded-lg bg-slate-800 p-2 text-xs text-slate-300 shadow-lg">
-          Rotation lock only works in the installed app — open FitBuddy from its home-screen icon.
+          Couldn't lock rotation. Your phone said: “{getLockError() || 'no reason given'}”. Tell
+          Claude this message.
         </span>
       )}
     </span>

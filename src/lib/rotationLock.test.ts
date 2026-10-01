@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyRotationLock, isLockPreferred, setRotationLock } from './rotationLock';
+import { applyRotationLock, getLockError, isLockPreferred, setRotationLock } from './rotationLock';
 
 function mockOrientation(lock?: () => Promise<void>) {
   const unlock = vi.fn();
@@ -42,5 +42,30 @@ describe('rotation lock that never answers', () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(await result).toBe('unsupported');
     vi.useRealTimers();
+  });
+});
+
+describe('fullscreen fallback', () => {
+  it('on a tap, a refused lock retries in fullscreen', async () => {
+    const lock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('The page needs to be fullscreen in order to call lock()'))
+      .mockResolvedValueOnce(undefined);
+    mockOrientation(lock);
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: requestFullscreen });
+
+    expect(await setRotationLock(true)).toBe('locked');
+    expect(requestFullscreen).toHaveBeenCalled();
+  });
+
+  it('the automatic re-apply never forces fullscreen, and reports the reason', async () => {
+    mockOrientation(() => Promise.reject(new Error('The page needs to be fullscreen')));
+    const requestFullscreen = vi.fn();
+    Object.defineProperty(document.documentElement, 'requestFullscreen', { configurable: true, value: requestFullscreen });
+
+    expect(await applyRotationLock()).toBe('unsupported');
+    expect(requestFullscreen).not.toHaveBeenCalled();
+    expect(getLockError()).toMatch(/fullscreen/);
   });
 });
