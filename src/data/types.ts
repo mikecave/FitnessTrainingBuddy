@@ -202,7 +202,10 @@ export interface Session {
   avgHeartRate?: number;
   maxHeartRate?: number;
   notes?: string;
-  status: 'active' | 'done';
+  /** `cancelled` is a tombstone: sync is full-state last-write-wins with no
+   *  deletes, so a cancel must be a newer version of the record, or the
+   *  cloud copy brings the workout straight back on the next sync. */
+  status: 'active' | 'done' | 'cancelled';
   sections: SessionSection[];
   /** Notes captured during the session, in the order they were written. */
   observations?: Observation[];

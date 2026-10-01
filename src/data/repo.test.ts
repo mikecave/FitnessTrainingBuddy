@@ -1645,3 +1645,22 @@ describe('deload set cut', () => {
     expect(sets.every((s) => s.load.type === 'kg' && s.load.kg === 25)).toBe(true);
   });
 });
+
+describe('cancelling a workout', () => {
+  it('stays cancelled when an older copy comes back from sync', async () => {
+    const session = await startSession('tpl-lower-1');
+    const cloudCopy = structuredClone(session); // what the server still holds
+    await cancelSession(session.id);
+    expect(await getActiveSession()).toBeUndefined();
+
+    // A sync re-imports the server's older, still-active version.
+    await importData({
+      format: 'fitbuddy-backup',
+      version: 1,
+      exportedAt: 0,
+      data: { exercises: [], templates: [], sessions: [cloudCopy], feedback: [] },
+    });
+    expect(await getActiveSession()).toBeUndefined();
+    expect((await listDoneSessions()).map((s) => s.id)).not.toContain(session.id);
+  });
+});

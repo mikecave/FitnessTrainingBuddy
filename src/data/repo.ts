@@ -586,7 +586,10 @@ function overlayPriorNumbers(
 }
 
 export async function listSessionsForTemplate(templateId: string): Promise<Session[]> {
-  const sessions = await db.sessions.where('templateId').equals(templateId).toArray();
+  // Cancelled workouts are tombstones kept only so sync propagates the cancel.
+  const sessions = (await db.sessions.where('templateId').equals(templateId).toArray()).filter(
+    (s) => s.status !== 'cancelled',
+  );
   return sessions.sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? 1 : -1;
     // Same-millisecond starts fall back to the id: ULIDs are monotonic, so a
@@ -768,8 +771,13 @@ export async function updateSession(session: Session): Promise<void> {
 }
 
 /** Discard a session entirely — it never happened. History and copy-forward (which only reads done sessions) are untouched. */
+/** Discard an unfinished workout. Marked `cancelled` rather than deleted:
+ *  a local delete never reached the cloud, so the next sync restored the
+ *  workout and it kept reappearing on Home (2026-10-01). */
 export async function cancelSession(sessionId: string): Promise<void> {
-  await db.sessions.delete(sessionId);
+  const session = await db.sessions.get(sessionId);
+  if (!session) return;
+  await db.sessions.put({ ...session, status: 'cancelled', updatedAt: Date.now() });
 }
 
 // ---- Whole-session activities: cardio, yoga and anything else timed ----
